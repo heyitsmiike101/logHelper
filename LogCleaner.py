@@ -4,12 +4,12 @@ import zipfile, py7zr    #pip install py7zr
 
 #LogCleaner V1.5
 #Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
-USE_CONFIG_FILE = True #If false, the below variables are used. Otherwise a config file is used
-TOP_DIRECTORY = "logs"
-ZIP_OUTPUT = "UnzippeTh"
-USE_THREADING = True
-KEEP_FILETYPES = ["evtx"]#, "txt", "log", "log1", "log2", "xlsx", "xls", "csv", "dat"]
-MINIMUM_FILE_SIZE_BYTES = 69640
+USE_CONFIG_FILE         = True        # If false, the below variables are used. Otherwise a config file is used.
+TOP_DIRECTORY           = "logs"      # A folder that the logs are stored in. These files will not be changed.
+ZIP_OUTPUT              = "Unzip"     # The output where the unzipped files will go.
+USE_THREADING           = True        # Threading for unzipping files.
+KEEP_FILETYPES          = ["evtx"]    #, "txt", "log", "log1", "log2", "xlsx", "xls", "csv", "dat"]
+MINIMUM_FILE_SIZE_BYTES = 69640       # Minimum file size to keep a file. To keep all, set to zero.
 
 
 def main():
