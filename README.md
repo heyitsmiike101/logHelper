@@ -16,8 +16,7 @@ Requirements
 
 
 To Run
-
-
+<br />
 Run without a config file.
 
 * USE_CONFIG_FILE         = True        # If false, the below variables are used. Otherwise a config file is used.
@@ -26,8 +25,7 @@ Run without a config file.
 * USE_THREADING           = True        # Threading for unzipping files.
 * KEEP_FILETYPES          = ["evtx"]    #, "txt", "log", "log1", "log2", "xlsx", "xls", "csv", "dat"]
 * MINIMUM_FILE_SIZE_BYTES = 69640       # Minimum file size to keep a file. To keep all, set to zero.
-
-
+<br />
 Run with a config file. Set USE_CONFIG_FILE to True. Once the program runs, if the file does not exist it will create config.json. The below config is the default settings.
 
 <br />'TOP_DIRECTORY': "logs",
