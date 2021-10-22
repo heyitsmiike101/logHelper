@@ -1,15 +1,10 @@
-import os
-import sys
-import zipfile
-import py7zr    #pip install py7zr
-import shutil
-import re
-import time
-import threading
-import hashlib
+import os, json, sys, time, re
+import shutil, hashlib, threading 
+import zipfile, py7zr    #pip install py7zr
 
 #LogCleaner V1.5
 #Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
+USE_CONFIG_FILE = True #If false, the below variables are used. Otherwise a config file is used
 TOP_DIRECTORY = "logs"
 ZIP_OUTPUT = "UnzippeTh"
 USE_THREADING = True
@@ -19,6 +14,17 @@ MINIMUM_FILE_SIZE_BYTES = 69640
 
 def main():
     '''Runs the Show'''
+
+    if USE_CONFIG_FILE:
+        config = read_settings_JSON()
+        global TOP_DIRECTORY, ZIP_OUTPUT, USE_THREADING, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES
+        TOP_DIRECTORY = config["TOP_DIRECTORY"]
+        ZIP_OUTPUT = config["ZIP_OUTPUT"]
+        USE_THREADING = config["USE_THREADING"]
+        KEEP_FILETYPES = config["KEEP_FILETYPES"]
+        MINIMUM_FILE_SIZE_BYTES = config["MINIMUM_FILE_SIZE_BYTES"]
+        print_config_settings(config)
+
 
     start_time = time.time()
 
@@ -52,8 +58,21 @@ def main():
     x = input("\n\nPress enter to quit")
 
 
-def readSettingsJSON():
-    filename = "config.txt"
+def print_config_settings(data):
+    print("************************************************************")
+    print("Config File Settings")
+    print("************************************************************")
+    print("TOP_DIRECTORY          :", data["TOP_DIRECTORY"])
+    print("ZIP_OUTPUT             :", data["ZIP_OUTPUT"])
+    print("USE_THREADING          :", data["USE_THREADING"])
+    print("KEEP_FILETYPES         :", data["KEEP_FILETYPES"])
+    print("MINIMUM_FILE_SIZE_BYTES:", data["MINIMUM_FILE_SIZE_BYTES"])
+    print()
+
+
+def read_settings_JSON():
+    '''Reads config.txt. if it does not exists, it creates it and closes the program.'''
+    filename = "config.json"
 
     data = {
             'TOP_DIRECTORY': "logs",
@@ -69,12 +88,16 @@ def readSettingsJSON():
         with open(filename) as json_file:
             data = json.load(json_file)
         json_file.close()
+
     except:
         with open(filename, 'w') as outfile:  
             json.dump(data, outfile)
         outfile.close()
+        print_config_settings(data)
+        x = input("Created config.txt. Open the file to customize settigns or run the application again to use default settings. (ENTER to quit)")
 
     return data
+
 
 def remove_small_files_by_bytes(file_list, minimum_size_bytes):
     '''Removes small files and returns a new file list without the small files'''
