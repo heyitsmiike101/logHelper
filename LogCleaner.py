@@ -2,7 +2,7 @@ import os, json, sys, time, re
 import shutil, hashlib, threading 
 import zipfile, py7zr    #pip install py7zr
 
-#LogCleaner V1.6
+#LogCleaner V1.8
 #Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
 USE_CONFIG_FILE         = True        # If false, the below variables are used. Otherwise a config file is used.
 TOP_DIRECTORY           = "logs"      # A folder that the logs are stored in. These files will not be changed.
@@ -24,6 +24,8 @@ def main():
         KEEP_FILETYPES = config["KEEP_FILETYPES"]
         MINIMUM_FILE_SIZE_BYTES = config["MINIMUM_FILE_SIZE_BYTES"]
         print_config_settings(config)
+        print()
+        x = input("Press enter to GOoOo!!!")
 
 
     start_time = time.time()
@@ -33,14 +35,15 @@ def main():
 
     zipcount = count_zips(ZIP_OUTPUT)
     while(zipcount > 0):
+        #Threading is not allowed this time because files could be overwritten when unzipping.
         modify_files(ZIP_OUTPUT, ZIP_OUTPUT, move_files = True, delete_zips = True, threading_allowed = False)
         zipcount = count_zips(ZIP_OUTPUT)
 
     #Moves final files after all unzipping.  The folders can only be deleted if empty
     modify_files(ZIP_OUTPUT, ZIP_OUTPUT, move_files = True, delete_zips = True, threading_allowed = False)
+    initialFileCount = len(create_file_list(ZIP_OUTPUT))
     remove_unwanted_filetypes(ZIP_OUTPUT, KEEP_FILETYPES)
     delete_empty_directories(ZIP_OUTPUT)
-
     #Remove small and duplicate files.
     file_list = create_file_list(ZIP_OUTPUT)
     FileCount1 = len(file_list)
@@ -51,10 +54,16 @@ def main():
     
     end_time = time.time()
     print()
-    print("Time to run:", end_time - start_time)
-    print("Removed unwanted filetypes  :", FileCount1)
-    print("Removed small files         :", FileCount2)
-    print("Removed duplicates          :", FileCount3)
+    min, sec = divmod(end_time - start_time, 60)
+    print("Time to run:", "{:.0f}".format(min), "minutes", "{:.0f}".format(sec), "seconds")
+    print("Count of total files            :", initialFileCount)
+    filesRemoved1 = initialFileCount - FileCount1
+    print("Total removed unwanted filetypes:", filesRemoved1)
+    filesRemoved2 = FileCount1 - FileCount2
+    print("Total removed small files       :", filesRemoved2)
+    filesRemoved3 = FileCount2 - FileCount3
+    print("Removed duplicates              :", filesRemoved3)
+    print("Total files after cleaning      :", FileCount3)
     x = input("\n\nPress enter to quit")
 
 
@@ -134,7 +143,7 @@ def remove_duplicates(file_list):
 
 def generate_hash(filename):
     '''Generate a hash based on a filename and returns a string md5.digest'''
-    print("Generating Hash")
+    print("Generating Hash\n", filename)
     block_size = 1024
     hash = hashlib.md5()
     with open(filename, 'rb') as file:
@@ -163,7 +172,7 @@ def remove_unwanted_filetypes(dir, keep_filetype_list):
 
     for result in current_directory_list:
         if os.path.isdir(os.path.join(dir, result)):
-            remove_unwanted_filetypes(os.path.join(dir, result))
+            remove_unwanted_filetypes(os.path.join(dir, result), keep_filetype_list)
         else:
             file_extension = ""
             if "." in result:
