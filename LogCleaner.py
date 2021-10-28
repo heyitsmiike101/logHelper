@@ -2,7 +2,7 @@ import os, json, sys, time, re
 import shutil, hashlib, threading 
 import zipfile, py7zr    #pip install py7zr
 
-#LogCleaner V1.8
+LogCleanerVersion =  "V1.8"
 #Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
 USE_CONFIG_FILE         = True        # If false, the below variables are used. Otherwise a config file is used.
 TOP_DIRECTORY           = "logs"      # A folder that the logs are stored in. These files will not be changed.
@@ -14,7 +14,7 @@ MINIMUM_FILE_SIZE_BYTES = 69640       # Minimum file size to keep a file. To kee
 
 def main():
     '''Runs the Show'''
-
+    print("Running Version", LogCleanerVersion)
     if USE_CONFIG_FILE:
         config = read_settings_JSON()
         global TOP_DIRECTORY, ZIP_OUTPUT, USE_THREADING, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES
@@ -27,18 +27,14 @@ def main():
         print()
         x = input("Press enter to GOoOo!!!")
 
-
     start_time = time.time()
-
     create_directories(ZIP_OUTPUT)
     modify_files(TOP_DIRECTORY, ZIP_OUTPUT, move_files = False, delete_zips=False, threading_allowed=USE_THREADING)
-
     zipcount = count_zips(ZIP_OUTPUT)
     while(zipcount > 0):
         #Threading is not allowed this time because files could be overwritten when unzipping.
         modify_files(ZIP_OUTPUT, ZIP_OUTPUT, move_files = True, delete_zips = True, threading_allowed = False)
         zipcount = count_zips(ZIP_OUTPUT)
-
     #Moves final files after all unzipping.  The folders can only be deleted if empty
     modify_files(ZIP_OUTPUT, ZIP_OUTPUT, move_files = True, delete_zips = True, threading_allowed = False)
     initialFileCount = len(create_file_list(ZIP_OUTPUT))
