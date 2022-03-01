@@ -2,15 +2,15 @@ import os, json, sys, time, re
 import shutil, hashlib, threading
 import zipfile, py7zr  # pip install py7zr
 
-LogCleanerVersion = "V1.9"
+LogCleanerVersion = "V1.11"
 # Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
 USE_CONFIG_FILE = (
     True  # If false, the below variables are used. Otherwise a config file is used.
 )
-TOP_DIRECTORY = (
+INITIAL_LOG_DIRECTORY = (
     "logs"  # A folder that the logs are stored in. These files will not be changed.
 )
-ZIP_OUTPUT = "Unzip"  # The output where the unzipped files will go.
+ZIP_OUTPUT = "unzipped_logs"  # The output where the unzipped files will go.
 USE_THREADING = True  # Threading for unzipping files.
 KEEP_FILETYPES = [
     "evtx"
@@ -25,8 +25,8 @@ def main():
     print("Running Version", LogCleanerVersion)
     if USE_CONFIG_FILE:
         config = read_settings_JSON()
-        global TOP_DIRECTORY, ZIP_OUTPUT, USE_THREADING, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES
-        TOP_DIRECTORY = config["TOP_DIRECTORY"]
+        global INITIAL_LOG_DIRECTORY, ZIP_OUTPUT, USE_THREADING, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES
+        INITIAL_LOG_DIRECTORY = config["INITIAL_LOG_DIRECTORY"]
         ZIP_OUTPUT = config["ZIP_OUTPUT"]
         USE_THREADING = config["USE_THREADING"]
         KEEP_FILETYPES = config["KEEP_FILETYPES"]
@@ -38,7 +38,7 @@ def main():
     start_time = time.time()
     create_directories(ZIP_OUTPUT)
     modify_files(
-        TOP_DIRECTORY,
+        INITIAL_LOG_DIRECTORY,
         ZIP_OUTPUT,
         move_files=False,
         delete_zips=False,
@@ -95,7 +95,7 @@ def print_config_settings(data: dict):
     print("************************************************************")
     print("Config File Settings")
     print("************************************************************")
-    print("TOP_DIRECTORY          :", data["TOP_DIRECTORY"])
+    print("TOP_DIRECTORY          :", data["INITIAL_LOG_DIRECTORY"])
     print("ZIP_OUTPUT             :", data["ZIP_OUTPUT"])
     print("USE_THREADING          :", data["USE_THREADING"])
     print("KEEP_FILETYPES         :", data["KEEP_FILETYPES"])
@@ -108,10 +108,10 @@ def read_settings_JSON() -> dict:
     filename = "config.json"
 
     data = {
-        "TOP_DIRECTORY": "logs",
-        "ZIP_OUTPUT": "UnzippeTh",
-        "USE_THREADING": True,
-        "KEEP_FILETYPES": ["evtx"],
+        "INITIAL_LOG_DIRECTORY": "logs",
+        "ZIP_OUTPUT": ZIP_OUTPUT,
+        "USE_THREADING": USE_THREADING,
+        "KEEP_FILETYPES": KEEP_FILETYPES,
         "extra filetypes": [
             "evtx",
             "txt",
@@ -123,7 +123,7 @@ def read_settings_JSON() -> dict:
             "csv",
             "dat",
         ],
-        "MINIMUM_FILE_SIZE_BYTES": 69640,
+        "MINIMUM_FILE_SIZE_BYTES": MINIMUM_FILE_SIZE_BYTES,
     }
 
     # If the filename is found, overwrite the default data, otherwise use the file.
@@ -134,7 +134,7 @@ def read_settings_JSON() -> dict:
 
     except:
         with open(filename, "w") as outfile:
-            json.dump(data, outfile)
+            json.dump(data, outfile, indent=2)
         outfile.close()
         print_config_settings(data)
         x = input(
