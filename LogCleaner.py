@@ -2,7 +2,7 @@ import os, json, sys, time, re
 import shutil, hashlib, threading
 import zipfile, py7zr  # pip install py7zr
 
-LogCleanerVersion = "V1.11"
+LogCleanerVersion = "V1.12"
 # Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
 USE_CONFIG_FILE = (
     True  # If false, the below variables are used. Otherwise a config file is used.
@@ -138,7 +138,7 @@ def read_settings_JSON() -> dict:
         outfile.close()
         print_config_settings(data)
         x = input(
-            "Created config.txt. Open the file to customize settigns or run the application again to use default settings. (ENTER to quit)"
+            "Created config.txt. Open the file to customize settings or run the application again to use default settings. (ENTER to quit)"
         )
         exit()
 
@@ -202,7 +202,7 @@ def create_file_list(dir: str) -> str:
     return file_list
 
 
-def remove_unwanted_filetypes(dir: str, keep_filetype_list: list[str]):
+def remove_unwanted_filetypes(dir: str, keep_filetype_list: list):
     """Remove unawanted filetypes by specifying a list of file types to keep."""
     current_directory_list = os.listdir(dir)
 
