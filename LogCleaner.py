@@ -1,8 +1,11 @@
-import os, json, sys, time, re
-import shutil, hashlib, threading
+import os, json, time
+import shutil, hashlib
 import zipfile, py7zr  # pip install py7zr
+import re
 
-LogCleanerVersion = "V1.12"
+shutil.register_unpack_format("7zip", [".7z"], py7zr.unpack_7zarchive)
+
+LogCleanerVersion = "V2.0"
 # Log unzipper.  Puts all zips into a single folder.  Once complete, there will be no zips or folders in the output folder.
 USE_CONFIG_FILE = (
     True  # If false, the below variables are used. Otherwise a config file is used.
@@ -11,13 +14,13 @@ INITIAL_LOG_DIRECTORY = (
     "logs"  # A folder that the logs are stored in. These files will not be changed.
 )
 ZIP_OUTPUT = "unzipped_logs"  # The output where the unzipped files will go.
-USE_THREADING = True  # Threading for unzipping files.
 KEEP_FILETYPES = [
     "evtx"
 ]  # , "txt", "log", "log1", "log2", "xlsx", "xls", "csv", "dat"]
 MINIMUM_FILE_SIZE_BYTES = (
     69640  # Minimum file size to keep a file. To keep all, set to zero.
 )
+IGNORE_FILES = ["FileXYZ.abc", "FileABC.xyz"]
 
 
 def main():
@@ -25,54 +28,41 @@ def main():
     print("Running Version", LogCleanerVersion)
     if USE_CONFIG_FILE:
         config = read_settings_JSON()
-        global INITIAL_LOG_DIRECTORY, ZIP_OUTPUT, USE_THREADING, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES
+        global INITIAL_LOG_DIRECTORY, ZIP_OUTPUT, KEEP_FILETYPES, MINIMUM_FILE_SIZE_BYTES, IGNORE_FILES
         INITIAL_LOG_DIRECTORY = config["INITIAL_LOG_DIRECTORY"]
         ZIP_OUTPUT = config["ZIP_OUTPUT"]
-        USE_THREADING = config["USE_THREADING"]
         KEEP_FILETYPES = config["KEEP_FILETYPES"]
         MINIMUM_FILE_SIZE_BYTES = config["MINIMUM_FILE_SIZE_BYTES"]
+        IGNORE_FILES = config["IGNORE_FILES"]
+
+        IGNORE_FILES = [x.lower() for x in IGNORE_FILES]
+
         print_config_settings(config)
         print()
         # x = input("Press enter to GOoOo!!!")
 
     start_time = time.time()
     create_directories(ZIP_OUTPUT)
-    modify_files(
-        INITIAL_LOG_DIRECTORY,
-        ZIP_OUTPUT,
-        move_files=False,
-        delete_zips=False,
-        threading_allowed=USE_THREADING,
-    )
+    modify_files(INITIAL_LOG_DIRECTORY, ZIP_OUTPUT, modify_files=False)
+    remove_unwanted_filetypes(ZIP_OUTPUT, KEEP_FILETYPES)
+    remove_unwanted_files(ZIP_OUTPUT, IGNORE_FILES)
+    flatten_directory(ZIP_OUTPUT, ZIP_OUTPUT)
+    delete_empty_directories(ZIP_OUTPUT)
+
     zipcount = count_zips(ZIP_OUTPUT)
     while zipcount > 0:
-        # Threading is not allowed this time because files could be overwritten when unzipping.
-        modify_files(
-            ZIP_OUTPUT,
-            ZIP_OUTPUT,
-            move_files=True,
-            delete_zips=True,
-            threading_allowed=False,
-        )
+        modify_files(ZIP_OUTPUT, ZIP_OUTPUT, modify_files=True)
+        remove_unwanted_filetypes(ZIP_OUTPUT, KEEP_FILETYPES)
+        remove_unwanted_files(ZIP_OUTPUT, IGNORE_FILES)
+        flatten_directory(ZIP_OUTPUT, ZIP_OUTPUT)
         zipcount = count_zips(ZIP_OUTPUT)
-    # Moves final files after all unzipping.  The folders can only be deleted if empty
-    modify_files(
-        ZIP_OUTPUT,
-        ZIP_OUTPUT,
-        move_files=True,
-        delete_zips=True,
-        threading_allowed=False,
-    )
-    initialFileCount = len(create_file_list(ZIP_OUTPUT))
-    remove_unwanted_filetypes(ZIP_OUTPUT, KEEP_FILETYPES)
-    delete_empty_directories(ZIP_OUTPUT)
-    # Remove small and duplicate files.
+        delete_empty_directories(ZIP_OUTPUT)
+
     file_list = create_file_list(ZIP_OUTPUT)
-    FileCount1 = len(file_list)
     file_list = remove_small_files_by_bytes(file_list, MINIMUM_FILE_SIZE_BYTES)
-    FileCount2 = len(file_list)
     remove_duplicates(file_list)
-    FileCount3 = len(create_file_list(ZIP_OUTPUT))
+    file_list = create_file_list(ZIP_OUTPUT)
+    FileCount = len(file_list)
 
     end_time = time.time()
     print()
@@ -80,15 +70,45 @@ def main():
     print(
         "Time to run:", "{:.0f}".format(min), "minutes", "{:.0f}".format(sec), "seconds"
     )
-    print("Count of total files            :", initialFileCount)
-    filesRemoved1 = initialFileCount - FileCount1
-    print("Total removed unwanted filetypes:", filesRemoved1)
-    filesRemoved2 = FileCount1 - FileCount2
-    print("Total removed small files       :", filesRemoved2)
-    filesRemoved3 = FileCount2 - FileCount3
-    print("Removed duplicates              :", filesRemoved3)
-    print("Total files after cleaning      :", FileCount3)
+    print("Total files after cleaning:", FileCount)
     x = input("\n\nPress enter to quit")
+
+
+def remove_unwanted_files(dir: str, files: list):
+    """Remove unawanted filetypes by specifying a list of file types to keep."""
+
+    current_directory_list = os.listdir(dir)
+
+    for result in current_directory_list:
+        if os.path.isdir(os.path.join(dir, result)):
+            remove_unwanted_files(os.path.join(dir, result), files)
+        else:
+            if result.lower() in files:
+                print("DELETING:", result)
+                os.remove(os.path.join(dir, result))
+
+
+def flatten_directory(search_source: str, flat_destination_dir: str):
+    """Recursively walk the directories and files. Calls itself when theres a new directory found. Moves all files from search_source to flat_destination_dir"""
+    print("Flattening Directory")
+    current_directory_list = os.listdir(search_source)
+    zip_list = []
+
+    for result in current_directory_list:
+        print("Working Directory:", search_source)
+        # if result is a directory, recursively call that directory.
+        if os.path.isdir(os.path.join(search_source, result)):
+            flatten_directory(os.path.join(search_source, result), flat_destination_dir)
+        # Else, the results is a file. Move it to the flat_destination_dir
+        else:
+            save_filename = check_file_exists(
+                os.path.join(flat_destination_dir, result)
+            )
+            print("Saving to:", save_filename)
+            try:
+                shutil.move(os.path.join(search_source, result), save_filename)
+            except:
+                pass
 
 
 def print_config_settings(data: dict):
@@ -97,9 +117,9 @@ def print_config_settings(data: dict):
     print("************************************************************")
     print("TOP_DIRECTORY          :", data["INITIAL_LOG_DIRECTORY"])
     print("ZIP_OUTPUT             :", data["ZIP_OUTPUT"])
-    print("USE_THREADING          :", data["USE_THREADING"])
     print("KEEP_FILETYPES         :", data["KEEP_FILETYPES"])
     print("MINIMUM_FILE_SIZE_BYTES:", data["MINIMUM_FILE_SIZE_BYTES"])
+    print("IGNORE_FILES           :", data["IGNORE_FILES"])
     print()
 
 
@@ -110,7 +130,6 @@ def read_settings_JSON() -> dict:
     data = {
         "INITIAL_LOG_DIRECTORY": "logs",
         "ZIP_OUTPUT": ZIP_OUTPUT,
-        "USE_THREADING": USE_THREADING,
         "KEEP_FILETYPES": KEEP_FILETYPES,
         "extra filetypes": [
             "evtx",
@@ -124,6 +143,7 @@ def read_settings_JSON() -> dict:
             "dat",
         ],
         "MINIMUM_FILE_SIZE_BYTES": MINIMUM_FILE_SIZE_BYTES,
+        "IGNORE_FILES": IGNORE_FILES,
     }
 
     # If the filename is found, overwrite the default data, otherwise use the file.
@@ -204,6 +224,8 @@ def create_file_list(dir: str) -> str:
 
 def remove_unwanted_filetypes(dir: str, keep_filetype_list: list):
     """Remove unawanted filetypes by specifying a list of file types to keep."""
+    keep_filetype_list.append("zip")
+    keep_filetype_list.append("7z")
     current_directory_list = os.listdir(dir)
 
     for result in current_directory_list:
@@ -235,67 +257,29 @@ def count_zips(dir: str):
     return zip_count
 
 
-def modify_files(
-    dir: str,
-    destination: str,
-    move_files: bool = False,
-    delete_zips: bool = False,
-    threading_allowed: bool = False,
-):
-    """Recursively walk the directories and files and calls itself when theres a new directory found. If move files is false, they will be copied instead of moved. If threading = True, the zips will be unzipped in parrallel"""
+def modify_files(dir: str, destination: str, modify_files: bool = False):
+    """Recursively walk the directories and files. Calls itself when theres a new directory found. If modify files is True, it will delete zips after unzipping and move regular files rather than copy."""
     current_directory_list = os.listdir(dir)
-    thread_list = []
     zip_list = []
 
     for result in current_directory_list:
+        print("Working Directory:", dir)
         # if result is a directory, recursively call that directory.
         if os.path.isdir(os.path.join(dir, result)):
-            modify_files(
-                os.path.join(dir, result),
-                destination,
-                move_files,
-                delete_zips,
-                threading_allowed,
-            )
+            modify_files(os.path.join(dir, result), destination, modify_files)
         # Else, the results is a file, unzip it or un7ip it. If its any other file, copy/move it over.
-        else:
+        elif not result.lower() in IGNORE_FILES:
             # unzipping
             file_extension = result.split(".")[-1]
             if file_extension == "zip":
-                if threading_allowed:
-                    print("Creating Thread")
-                    thread_list.append(
-                        threading.Thread(
-                            target=unzip_file,
-                            args=(dir, result, destination, delete_zips),
-                        )
-                    )
-                else:
-                    unzip_file(dir, result, destination, delete_zips)
+                unzip_file(dir, result, destination, modify_files)
             elif file_extension == "7z":
-                if threading_allowed:
-                    print("Creating Thread")
-                    thread_list.append(
-                        threading.Thread(
-                            target=un7zip_file,
-                            args=(dir, result, destination, delete_zips),
-                        )
-                    )
-                else:
-                    un7zip_file(dir, result, destination, delete_zips)
-            # Moving/Copying files.
+                un7zip_file(dir, result, destination, modify_files)
             elif file_extension in KEEP_FILETYPES:
-                if move_files:
+                if modify_files:
                     move_file(dir, result, destination)
                 else:
                     copy_file(dir, result, destination)
-
-    # Unzipping files in seperate threads if specified.
-    if threading_allowed:
-        for t in thread_list:
-            t.start()
-        for t in thread_list:
-            t.join()
 
 
 def delete_empty_directories(dir: str):
@@ -320,7 +304,7 @@ def delete_empty_directories(dir: str):
 
 
 def create_directories(directories: str):
-    """Builds out all the directories that don't exist."""
+    """Builds out one or more directories deep if they don't exist."""
     directories = os.path.normpath(directories)
     directory_list = directories.split(os.sep)
 
@@ -330,6 +314,99 @@ def create_directories(directories: str):
         dir_string = os.path.join(dir_string, i)
         if not os.path.isdir(dir_string):
             os.mkdir(dir_string)
+
+
+def unzip_file(
+    dir: str, filename: str, zip_destination: str, delete_after_complete: bool = False
+):
+    """Unzips a file in the dir+filename then places it in the zip_destination"""
+    print("Unzipping:", os.path.join(dir, filename))
+    unzip_name = filename.replace(".zip", "")
+    unzip_save = os.path.join(zip_destination, unzip_name)
+    print("Saving to:", unzip_save)
+
+    # checks if file exists in destination.  if so, it renames the filename.
+    unzip_save = check_file_exists(unzip_save)
+
+    with zipfile.ZipFile(os.path.join(dir, filename), "r") as zip_obj:
+        list_of_filenames = zip_obj.namelist()
+
+        for zipfile_filename in list_of_filenames:
+            # unzipfile_filename = zipfile_filename.replace(".zip","")
+            unzipfile_filename = os.path.join(unzip_save, zipfile_filename)
+            file_errors = False
+            file_extension = ""
+            file_extension = unzipfile_filename.split(".")[-1]
+            if file_extension in KEEP_FILETYPES or file_extension in ["zip", "7z"]:
+                try:
+                    zip_obj.extract(zipfile_filename, unzip_save)
+                except:
+                    file_errors = True
+                    print(
+                        "#########################################################################"
+                    )
+                    print("Error unzipping file:", os.path.join(dir, zipfile_filename))
+                    print(
+                        "Most Likely the file path is too long for python.\nPlace logs and program as close to root as possible."
+                    )
+                    print(
+                        "#########################################################################"
+                    )
+        zip_obj.close()
+
+        if delete_after_complete and not file_errors:
+            try:
+                os.remove(os.path.join(dir, filename))
+            except:
+                global IGNORE_FILES
+                IGNORE_FILES.append(filename.lower())
+
+
+def un7zip_file(
+    dir: str, filename: str, zip_destination: str, delete_after_complete: bool = False
+):
+    """Un7zips a file in the dir+filename then places it in the zip_destination"""
+    print("Un7zipping:", os.path.join(dir, filename))
+    unzip_name = filename.replace(".7z", "")
+    unzip_save = os.path.join(zip_destination, unzip_name)
+
+    # checks if file exists in destination.  if so, it renames the filename.
+    unzip_save = check_file_exists(unzip_save)
+    print("Saving to:", unzip_save)
+
+    try:
+        shutil.unpack_archive(os.path.join(dir, filename), unzip_save)
+    except:
+        print(
+            "#########################################################################"
+        )
+        error_directory = "ErrorFiles"
+        print("Error un7zipping file:", os.path.join(dir, filename))
+        print(
+            "#########################################################################"
+        )
+
+    if delete_after_complete:
+        try:
+            os.remove(os.path.join(dir, filename))
+        except:
+            global IGNORE_FILES
+            IGNORE_FILES.append(filename.lower())
+
+
+def check_file_exists(path: str):
+    filename, extension = os.path.splitext(path)
+    counter = 1
+
+    while os.path.exists(path):
+        filename = re.sub(r"(\([0-9]+\))$", "", filename)
+        path = filename + "(" + str(counter) + ")" + extension
+        if ")(" in path:
+            x = print("HERE IT IS")
+
+        counter += 1
+
+    return path
 
 
 def move_file(dir: str, filename: str, destination: str):
@@ -376,123 +453,6 @@ def copy_file(dir: str, filename: str, destination: str):
         print(
             "#########################################################################"
         )
-
-
-def unzip_file(
-    dir: str, filename: str, zip_destination: str, delete_after_complete: bool = False
-):
-    """Unzips a file in the dir+filename then places it in the zip_destination"""
-    print("Unzipping:", os.path.join(dir, filename))
-    unzip_name = filename.replace(".zip", "")
-    unzip_save = os.path.join(zip_destination, unzip_name)
-    print("Saving to:", unzip_save)
-
-    # checks if file exists in destination.  if so, it renames the filename.
-    unzip_save = check_file_exists(unzip_save)
-
-    with zipfile.ZipFile(os.path.join(dir, filename), "r") as zip_obj:
-        list_of_filenames = zip_obj.namelist()
-
-        for zipfile_filename in list_of_filenames:
-            # unzipfile_filename = zipfile_filename.replace(".zip","")
-            unzipfile_filename = os.path.join(unzip_save, zipfile_filename)
-            file_errors = False
-            file_extension = ""
-            file_extension = unzipfile_filename.split(".")[-1]
-            if file_extension in KEEP_FILETYPES or file_extension in ["zip", "7z"]:
-                try:
-                    zip_obj.extract(zipfile_filename, unzip_save)
-                except:
-                    file_errors = True
-                    print(
-                        "#########################################################################"
-                    )
-                    print("Error unzipping file:", os.path.join(dir, zipfile_filename))
-                    print(
-                        "Most Likely the file path is too long for python.\nPlace logs and program as close to root as possible."
-                    )
-                    print(
-                        "#########################################################################"
-                    )
-        zip_obj.close()
-
-        if delete_after_complete and not file_errors:
-            os.remove(os.path.join(dir, filename))
-
-
-def un7zip_file(
-    dir: str, filename: str, zip_destination: str, delete_after_complete: bool = False
-):
-    """Un7zips a file in the dir+filename then places it in the zip_destination"""
-    print("Un7zipping:", os.path.join(dir, filename))
-    unzip_name = filename.replace(".7z", "")
-    unzip_save = os.path.join(zip_destination, unzip_name)
-
-    # checks if file exists in destination.  if so, it renames the filename.
-    unzip_save = check_file_exists(unzip_save)
-    print("Saving to:", unzip_save)
-    file_errors = False
-
-    try:
-        archive = py7zr.SevenZipFile(os.path.join(dir, filename), mode="r")
-        archive.extractall(path=unzip_save)
-        archive.close()
-    except:
-        file_errors = True
-        print(
-            "#########################################################################"
-        )
-        print("Error un7zipping file:", os.path.join(dir, filename))
-        print(
-            "Most Likely the file path is too long for python.\nPlace logs and program as close to root as possible."
-        )
-        print(
-            "#########################################################################"
-        )
-
-    if delete_after_complete and not file_errors:
-        os.remove(os.path.join(dir, filename))
-
-
-def check_file_exists(filename: str):
-    """Checks if file exists. If it does, this function will pass a new file name."""
-
-    # if the file does not exist, send back the original file name.  No need to rename.
-    if not os.path.exists(filename):
-        if os.path.isdir(filename):
-            create_directories(filename)
-        return filename
-
-    # otherwise rename.
-    file_number = 1
-    file_extension = ""
-    # Some files do not
-    if "." in filename:
-        file_extension = filename.split(".")[-1]
-
-    while True:
-        print("Renaming", file_number, end="")
-        # Checks if it's a directory that needs to be renamed.
-        if os.path.isdir(filename):
-            new_filename = filename + "(f" + str(file_number) + ")"
-        else:
-            # if it's not a folder, its a file.
-            # File with an extension.
-            if not file_extension == "":
-                new_filename = filename.replace(
-                    "." + file_extension,
-                    "(f" + str(file_number) + ")" + "." + file_extension,
-                )
-
-            # File without extension.
-            else:
-                new_filename = filename + "(f" + str(file_number) + ")"
-
-        if not os.path.exists(new_filename):
-            print()
-            return new_filename
-
-        file_number += 1
 
 
 if __name__ == "__main__":
